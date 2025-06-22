@@ -14,6 +14,7 @@ import {
   Loader2,
   Inbox,
   Eye,
+  Folder,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,6 +117,35 @@ export function FileCloaker() {
     loadFiles();
   }, [toast]);
 
+  const groupedFiles = React.useMemo(() => {
+    const groups: Record<string, HiddenFile[]> = {
+      image: [],
+      video: [],
+      audio: [],
+      document: [],
+      other: [],
+    };
+    files.forEach((file) => {
+      const category = file.category || "other";
+      if (groups[category]) {
+        groups[category].push(file);
+      } else {
+        groups.other.push(file);
+      }
+    });
+    return groups;
+  }, [files]);
+
+  const categoryOrder: (keyof typeof groupedFiles)[] = ["image", "video", "audio", "document", "other"];
+  
+  const categoryDisplayNames: Record<string, string> = {
+      image: "Images",
+      video: "Videos",
+      audio: "Audio Files",
+      document: "Documents",
+      other: "Other Files",
+  };
+
   const handleHideFileClick = () => {
     fileInputRef.current?.click();
   };
@@ -122,19 +159,23 @@ export function FileCloaker() {
     setIsProcessing(true);
     try {
       const newFileId = await db.addFile(selectedFile);
-      const newFile: HiddenFile = {
-        id: newFileId,
-        name: selectedFile.name,
-        type: selectedFile.type,
-        size: selectedFile.size,
-        lastModified: selectedFile.lastModified,
-      };
-      setFiles((prevFiles) => [newFile, ...prevFiles]);
-      toast({
-        title: "File Hidden",
-        description: `"${selectedFile.name}" has been successfully hidden.`,
-      });
-      setShowDeleteReminder(true);
+      const fileWithData = await db.getFile(newFileId);
+      if (fileWithData) {
+        const newFile: HiddenFile = {
+            id: fileWithData.id,
+            name: fileWithData.name,
+            type: fileWithData.type,
+            size: fileWithData.size,
+            lastModified: fileWithData.lastModified,
+            category: fileWithData.category,
+        };
+        setFiles((prevFiles) => [newFile, ...prevFiles].sort((a, b) => b.id - a.id));
+        toast({
+            title: "File Hidden",
+            description: `"${selectedFile.name}" has been successfully hidden.`,
+        });
+        setShowDeleteReminder(true);
+      }
     } catch (error) {
       console.error("Failed to hide file:", error);
       toast({
@@ -144,7 +185,6 @@ export function FileCloaker() {
       });
     } finally {
       setIsProcessing(false);
-      // Reset file input
       if(fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -212,6 +252,65 @@ export function FileCloaker() {
     }
   };
 
+  const renderFilesTable = (filesToRender: HiddenFile[]) => (
+    <div className="border rounded-lg overflow-hidden">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                <TableHead className="w-[50px]"></TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Date Hidden</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {filesToRender.map((file) => (
+                    <TableRow key={file.id}>
+                        <TableCell>
+                            <FileTypeIcon type={file.type} />
+                        </TableCell>
+                        <TableCell className="font-medium truncate max-w-xs">{file.name}</TableCell>
+                        <TableCell>{formatBytes(file.size)}</TableCell>
+                        <TableCell>{new Date(file.lastModified).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-right">
+                        <TooltipProvider>
+                            <div className="flex justify-end gap-2">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={() => handleViewFile(file)} disabled={loadingViewId === file.id}>
+                                        {loadingViewId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>View File</p></TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={() => handleUnhideFile(file.id)}>
+                                        <Download className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Unhide / Download</p></TooltipContent>
+                            </Tooltip>
+                             <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteFile(file.id, file.name)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Delete Forever</p></TooltipContent>
+                            </Tooltip>
+                            </div>
+                        </TooltipProvider>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    </div>
+  );
+
+
   return (
     <>
     <Card className="w-full shadow-lg">
@@ -243,76 +342,40 @@ export function FileCloaker() {
             </Button>
         </div>
 
-        <div className="border rounded-lg overflow-hidden">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                    <TableHead className="w-[50px]"></TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Date Hidden</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {isLoading ? (
-                        <TableRow>
-                            <TableCell colSpan={5} className="h-24 text-center">
-                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
-                            </TableCell>
-                        </TableRow>
-                    ) : files.length > 0 ? (
-                        files.map((file) => (
-                        <TableRow key={file.id}>
-                            <TableCell>
-                                <FileTypeIcon type={file.type} />
-                            </TableCell>
-                            <TableCell className="font-medium truncate max-w-xs">{file.name}</TableCell>
-                            <TableCell>{formatBytes(file.size)}</TableCell>
-                            <TableCell>{new Date(file.lastModified).toLocaleDateString()}</TableCell>
-                            <TableCell className="text-right">
-                            <TooltipProvider>
-                                <div className="flex justify-end gap-2">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" onClick={() => handleViewFile(file)} disabled={loadingViewId === file.id}>
-                                            {loadingViewId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p>View File</p></TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" onClick={() => handleUnhideFile(file.id)}>
-                                            <Download className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p>Unhide / Download</p></TooltipContent>
-                                </Tooltip>
-                                 <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteFile(file.id, file.name)}>
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p>Delete Forever</p></TooltipContent>
-                                </Tooltip>
-                                </div>
-                            </TooltipProvider>
-                            </TableCell>
-                        </TableRow>
-                        ))
-                    ) : (
-                        <TableRow>
-                            <TableCell colSpan={5} className="h-32 text-center">
-                                <Inbox className="mx-auto h-10 w-10 text-muted-foreground mb-2"/>
-                                <p className="font-semibold">No hidden files yet</p>
-                                <p className="text-sm text-muted-foreground">Click "Hide a File" to get started.</p>
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+        <div className="space-y-4">
+            {isLoading ? (
+                <div className="flex justify-center items-center h-24">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : files.length > 0 ? (
+                <Accordion type="multiple" className="w-full" defaultValue={["image", "video"]}>
+                    {categoryOrder.map((category) => {
+                        const categoryFiles = groupedFiles[category];
+                        if (categoryFiles.length === 0) return null;
+                        
+                        return (
+                            <AccordionItem value={category} key={category}>
+                                <AccordionTrigger className="hover:no-underline">
+                                    <div className="flex items-center gap-3 text-lg">
+                                        <Folder className="h-6 w-6 text-primary" />
+                                        <span>{categoryDisplayNames[category]}</span>
+                                        <Badge variant="secondary">{categoryFiles.length}</Badge>
+                                    </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="p-1">
+                                    {renderFilesTable(categoryFiles)}
+                                </AccordionContent>
+                            </AccordionItem>
+                        )
+                    })}
+                </Accordion>
+            ) : (
+                <div className="text-center p-8 border-2 border-dashed rounded-lg">
+                    <Inbox className="mx-auto h-12 w-12 text-muted-foreground mb-3"/>
+                    <h3 className="text-xl font-semibold mb-1">No hidden files yet</h3>
+                    <p className="text-muted-foreground">Click "Hide a File" to get started.</p>
+                </div>
+            )}
         </div>
       </CardContent>
     </Card>
@@ -390,7 +453,7 @@ export function FileCloaker() {
                   <p className="text-sm text-muted-foreground mb-6">
                     This file type cannot be previewed in the browser.
                   </p>
-                  <Button onClick={() => handleUnhideFile(viewingFile.id)}>
+                  <Button onClick={() => viewingFile && handleUnhideFile(viewingFile.id)}>
                     <Download className="mr-2 h-4 w-4" />
                     Download File
                   </Button>

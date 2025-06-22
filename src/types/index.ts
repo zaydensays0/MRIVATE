@@ -4,6 +4,7 @@ export interface HiddenFile {
   type: string;
   size: number;
   lastModified: number;
+  category: string;
 }
 
 export interface HiddenFileWithData extends HiddenFile {

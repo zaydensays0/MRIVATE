@@ -4,7 +4,7 @@ import type { HiddenFile, HiddenFileWithData } from "@/types";
 
 const DB_NAME = "FileCloakerDB";
 const STORE_NAME = "hiddenFiles";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -24,11 +24,22 @@ const getDB = (): Promise<IDBDatabase> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      let store: IDBObjectStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, {
+        store = db.createObjectStore(STORE_NAME, {
           keyPath: "id",
           autoIncrement: true,
         });
+      } else {
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        if (!transaction) return;
+        store = transaction.objectStore(STORE_NAME);
+      }
+      
+      if (event.oldVersion < 2) {
+        if (!store.indexNames.contains('category')) {
+          store.createIndex("category", "category", { unique: false });
+        }
       }
     };
 
@@ -36,6 +47,14 @@ const getDB = (): Promise<IDBDatabase> => {
       resolve(request.result);
     };
   });
+};
+
+const getFileCategory = (fileType: string): string => {
+    if (fileType.startsWith("image/")) return "image";
+    if (fileType.startsWith("video/")) return "video";
+    if (fileType.startsWith("audio/")) return "audio";
+    if (fileType === "application/pdf") return "document";
+    return "other";
 };
 
 export const addFile = async (file: File): Promise<number> => {
@@ -48,6 +67,7 @@ export const addFile = async (file: File): Promise<number> => {
     type: file.type,
     size: file.size,
     lastModified: file.lastModified,
+    category: getFileCategory(file.type),
     data: file,
   };
 

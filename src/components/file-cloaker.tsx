@@ -13,6 +13,7 @@ import {
   Trash2,
   Loader2,
   Inbox,
+  Eye,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import * as db from "@/lib/db";
 import type { HiddenFile } from "@/types";
@@ -78,6 +85,9 @@ export function FileCloaker() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showDeleteReminder, setShowDeleteReminder] = React.useState(false);
+  const [viewingFile, setViewingFile] = React.useState<{ id: number; url: string; name: string; type: string } | null>(null);
+  const [loadingViewId, setLoadingViewId] = React.useState<number | null>(null);
+
 
   React.useEffect(() => {
     const loadFiles = async () => {
@@ -138,6 +148,32 @@ export function FileCloaker() {
       if(fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+    }
+  };
+
+  const handleViewFile = async (file: HiddenFile) => {
+    setLoadingViewId(file.id);
+    try {
+      const fileWithData = await db.getFile(file.id);
+      if (fileWithData) {
+        const url = URL.createObjectURL(fileWithData.data);
+        setViewingFile({ id: file.id, url: url, name: file.name, type: file.type });
+      } else {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not find file data.",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load file for viewing:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not load file for viewing.",
+      });
+    } finally {
+      setLoadingViewId(null);
     }
   };
 
@@ -239,6 +275,14 @@ export function FileCloaker() {
                                 <div className="flex justify-end gap-2">
                                 <Tooltip>
                                     <TooltipTrigger asChild>
+                                        <Button variant="ghost" size="icon" onClick={() => handleViewFile(file)} disabled={loadingViewId === file.id}>
+                                            {loadingViewId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent><p>View File</p></TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
                                         <Button variant="ghost" size="icon" onClick={() => handleUnhideFile(file.id)}>
                                             <Download className="h-4 w-4" />
                                         </Button>
@@ -285,6 +329,77 @@ export function FileCloaker() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog
+        open={!!viewingFile}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            if (viewingFile) {
+              URL.revokeObjectURL(viewingFile.url);
+            }
+            setViewingFile(null);
+          }
+        }}
+      >
+      <DialogContent className="max-w-4xl w-full max-h-[90vh] flex flex-col p-4 sm:p-6">
+        <DialogHeader>
+          <DialogTitle className="truncate">{viewingFile?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 py-4">
+          {viewingFile &&
+            (() => {
+              if (viewingFile.type.startsWith("image/")) {
+                return (
+                  <img
+                    src={viewingFile.url}
+                    alt={viewingFile.name}
+                    className="max-w-full max-h-[75vh] object-contain mx-auto"
+                  />
+                );
+              }
+              if (viewingFile.type.startsWith("video/")) {
+                return (
+                  <video
+                    src={viewingFile.url}
+                    controls
+                    className="w-full max-h-[75vh]"
+                  ></video>
+                );
+              }
+              if (viewingFile.type.startsWith("audio/")) {
+                return (
+                  <audio
+                    src={viewingFile.url}
+                    controls
+                    className="w-full"
+                  ></audio>
+                );
+              }
+              if (viewingFile.type === "application/pdf") {
+                return (
+                  <iframe
+                    src={viewingFile.url}
+                    className="w-full h-[75vh]"
+                    title={viewingFile.name}
+                  ></iframe>
+                );
+              }
+              return (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-muted rounded-lg">
+                  <FileIcon className="h-16 w-16 text-muted-foreground mb-4" />
+                  <p className="font-semibold">Preview not available</p>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    This file type cannot be previewed in the browser.
+                  </p>
+                  <Button onClick={() => handleUnhideFile(viewingFile.id)}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download File
+                  </Button>
+                </div>
+              );
+            })()}
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

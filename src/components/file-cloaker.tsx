@@ -86,38 +86,38 @@ const FileTypeIcon = ({ type }: { type: string }) => {
   return <FileIcon className="h-5 w-5 text-muted-foreground" />;
 };
 
-const ImageFileCard = ({ file, onView, onUnhide, onDelete }: {
+const MediaFileCard = ({ file, onView, onUnhide, onDelete }: {
     file: HiddenFile;
     onView: (file: HiddenFile) => void;
     onUnhide: (fileId: number) => void;
     onDelete: (fileId: number, fileName: string) => void;
 }) => {
-    const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+    const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
     const { toast } = useToast();
 
     React.useEffect(() => {
         let objectUrl: string | null = null;
-        const loadImage = async () => {
+        const loadMedia = async () => {
             setIsLoading(true);
             try {
                 const fileWithData = await db.getFile(file.id);
-                if (fileWithData && fileWithData.type.startsWith('image/')) {
+                if (fileWithData && (fileWithData.type.startsWith('image/') || fileWithData.type.startsWith('video/'))) {
                     objectUrl = URL.createObjectURL(fileWithData.data);
-                    setImageUrl(objectUrl);
+                    setMediaUrl(objectUrl);
                 }
             } catch (error) {
-                console.error("Failed to load image for grid view:", error);
+                console.error("Failed to load media for grid view:", error);
                 toast({
                     variant: "destructive",
                     title: "Error",
-                    description: "Could not load image for preview.",
+                    description: "Could not load media for preview.",
                 });
             } finally {
                 setIsLoading(false);
             }
         };
-        loadImage();
+        loadMedia();
         return () => {
             if (objectUrl) {
                 URL.revokeObjectURL(objectUrl);
@@ -125,15 +125,24 @@ const ImageFileCard = ({ file, onView, onUnhide, onDelete }: {
         };
     }, [file.id, file.type, toast]);
 
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
     return (
         <Card className="overflow-hidden group relative shadow-sm hover:shadow-lg transition-shadow duration-300">
             <div className="aspect-square w-full bg-muted flex items-center justify-center">
                 {isLoading ? (
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                ) : imageUrl ? (
-                    <img src={imageUrl} alt={file.name} className="w-full h-full object-cover" />
+                ) : mediaUrl ? (
+                    <>
+                        {isImage && <img src={mediaUrl} alt={file.name} className="w-full h-full object-cover" />}
+                        {isVideo && <video src={mediaUrl} muted playsInline className="w-full h-full object-cover" />}
+                    </>
                 ) : (
-                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                    <>
+                        {isImage && <ImageIcon className="h-8 w-8 text-muted-foreground" />}
+                        {isVideo && <VideoIcon className="h-8 w-8 text-muted-foreground" />}
+                    </>
                 )}
             </div>
             
@@ -342,10 +351,10 @@ export function FileCloaker() {
     }
   };
 
-  const renderImageGrid = (filesToRender: HiddenFile[]) => (
+  const renderMediaGrid = (filesToRender: HiddenFile[]) => (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-2 md:p-4">
       {filesToRender.map((file) => (
-        <ImageFileCard
+        <MediaFileCard
           key={file.id}
           file={file}
           onView={handleViewFile}
@@ -467,8 +476,8 @@ export function FileCloaker() {
                                     </div>
                                 </AccordionTrigger>
                                 <AccordionContent>
-                                    {category === 'image' 
-                                      ? renderImageGrid(categoryFiles) 
+                                    {(category === 'image' || category === 'video')
+                                      ? renderMediaGrid(categoryFiles) 
                                       : renderFilesTable(categoryFiles)
                                     }
                                 </AccordionContent>

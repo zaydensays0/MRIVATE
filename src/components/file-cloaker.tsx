@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -83,6 +84,95 @@ const FileTypeIcon = ({ type }: { type: string }) => {
     return <FileTextIcon className="h-5 w-5 text-muted-foreground" />;
   }
   return <FileIcon className="h-5 w-5 text-muted-foreground" />;
+};
+
+const ImageFileCard = ({ file, onView, onUnhide, onDelete }: {
+    file: HiddenFile;
+    onView: (file: HiddenFile) => void;
+    onUnhide: (fileId: number) => void;
+    onDelete: (fileId: number, fileName: string) => void;
+}) => {
+    const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const { toast } = useToast();
+
+    React.useEffect(() => {
+        let objectUrl: string | null = null;
+        const loadImage = async () => {
+            setIsLoading(true);
+            try {
+                const fileWithData = await db.getFile(file.id);
+                if (fileWithData && fileWithData.type.startsWith('image/')) {
+                    objectUrl = URL.createObjectURL(fileWithData.data);
+                    setImageUrl(objectUrl);
+                }
+            } catch (error) {
+                console.error("Failed to load image for grid view:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Could not load image for preview.",
+                });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadImage();
+        return () => {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [file.id, file.type, toast]);
+
+    return (
+        <Card className="overflow-hidden group relative shadow-sm hover:shadow-lg transition-shadow duration-300">
+            <div className="aspect-square w-full bg-muted flex items-center justify-center">
+                {isLoading ? (
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                ) : imageUrl ? (
+                    <img src={imageUrl} alt={file.name} className="w-full h-full object-cover" />
+                ) : (
+                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                )}
+            </div>
+            
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="flex gap-2">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" className="h-9 w-9 border-white/50 bg-black/20 text-white hover:bg-white/30" onClick={() => onView(file)}>
+                                    <Eye className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>View</p></TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" className="h-9 w-9 border-white/50 bg-black/20 text-white hover:bg-white/30" onClick={() => onUnhide(file.id)}>
+                                    <Download className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>Download</p></TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" className="h-9 w-9 border-red-500/80 bg-black/20 text-red-500 hover:bg-red-500/30" onClick={() => onDelete(file.id, file.name)}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>Delete</p></TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+            </div>
+            
+            <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+                <p className="text-white text-xs font-semibold truncate">{file.name}</p>
+            </div>
+        </Card>
+    );
 };
 
 
@@ -252,6 +342,20 @@ export function FileCloaker() {
     }
   };
 
+  const renderImageGrid = (filesToRender: HiddenFile[]) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-2 md:p-4">
+      {filesToRender.map((file) => (
+        <ImageFileCard
+          key={file.id}
+          file={file}
+          onView={handleViewFile}
+          onUnhide={handleUnhideFile}
+          onDelete={handleDeleteFile}
+        />
+      ))}
+    </div>
+  );
+
   const renderFilesTable = (filesToRender: HiddenFile[]) => (
     <div className="border rounded-lg overflow-hidden">
         <Table>
@@ -348,7 +452,7 @@ export function FileCloaker() {
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
             ) : files.length > 0 ? (
-                <Accordion type="multiple" className="w-full" defaultValue={["image", "video"]}>
+                <Accordion type="multiple" className="w-full" defaultValue={["image"]}>
                     {categoryOrder.map((category) => {
                         const categoryFiles = groupedFiles[category];
                         if (categoryFiles.length === 0) return null;
@@ -362,8 +466,11 @@ export function FileCloaker() {
                                         <Badge variant="secondary">{categoryFiles.length}</Badge>
                                     </div>
                                 </AccordionTrigger>
-                                <AccordionContent className="p-1">
-                                    {renderFilesTable(categoryFiles)}
+                                <AccordionContent>
+                                    {category === 'image' 
+                                      ? renderImageGrid(categoryFiles) 
+                                      : renderFilesTable(categoryFiles)
+                                    }
                                 </AccordionContent>
                             </AccordionItem>
                         )

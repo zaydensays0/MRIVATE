@@ -10,7 +10,6 @@ import {
   Video as VideoIcon,
   FileText as FileTextIcon,
   Music as MusicIcon,
-  Download,
   Trash2,
   Loader2,
   Inbox,
@@ -86,10 +85,9 @@ const FileTypeIcon = ({ type }: { type: string }) => {
   return <FileIcon className="h-5 w-5 text-muted-foreground" />;
 };
 
-const MediaFileCard = ({ file, onView, onUnhide, onDelete }: {
+const MediaFileCard = ({ file, onView, onDelete }: {
     file: HiddenFile;
     onView: (file: HiddenFile) => void;
-    onUnhide: (fileId: number) => void;
     onDelete: (fileId: number, fileName: string) => void;
 }) => {
     const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
@@ -156,14 +154,6 @@ const MediaFileCard = ({ file, onView, onUnhide, onDelete }: {
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent><p>View</p></TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button variant="outline" size="icon" className="h-9 w-9 border-white/50 bg-black/20 text-white hover:bg-white/30" onClick={() => onUnhide(file.id)}>
-                                    <Download className="h-4 w-4" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent><p>Download</p></TooltipContent>
                         </Tooltip>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -316,24 +306,6 @@ export function FileCloaker() {
     }
   };
 
-  const handleUnhideFile = async (fileId: number) => {
-    const file = await db.getFile(fileId);
-    if (file) {
-      const url = URL.createObjectURL(file.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-       toast({
-        title: "File Restored",
-        description: `"${file.name}" is being downloaded.`,
-      });
-    }
-  };
-  
   const handleDeleteFile = async (fileId: number, fileName: string) => {
     try {
         await db.deleteFile(fileId);
@@ -358,7 +330,6 @@ export function FileCloaker() {
           key={file.id}
           file={file}
           onView={handleViewFile}
-          onUnhide={handleUnhideFile}
           onDelete={handleDeleteFile}
         />
       ))}
@@ -396,14 +367,6 @@ export function FileCloaker() {
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent><p>View File</p></TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" onClick={() => handleUnhideFile(file.id)}>
-                                        <Download className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent><p>Unhide / Download</p></TooltipContent>
                             </Tooltip>
                              <Tooltip>
                                 <TooltipTrigger asChild>
@@ -566,13 +529,9 @@ export function FileCloaker() {
                 <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-muted rounded-lg">
                   <FileIcon className="h-16 w-16 text-muted-foreground mb-4" />
                   <p className="font-semibold">Preview not available</p>
-                  <p className="text-sm text-muted-foreground mb-6">
+                  <p className="text-sm text-muted-foreground">
                     This file type cannot be previewed in the browser.
                   </p>
-                  <Button onClick={() => viewingFile && handleUnhideFile(viewingFile.id)}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download File
-                  </Button>
                 </div>
               );
             })()}
